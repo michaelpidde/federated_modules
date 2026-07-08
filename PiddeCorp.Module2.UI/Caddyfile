@@ -1,0 +1,21 @@
+:80 {
+	root * /usr/share/caddy
+
+	# SPA fallback: client-side (wouter) routing needs a direct load or
+	# refresh into a deep route (e.g. /tasks) to still resolve to
+	# index.html, not 404 - only the app's own JS knows those routes exist.
+	try_files {path} /index.html
+
+	# PiddeCorp.Portal.Shell fetches this container's remoteEntry.js and
+	# exposed chunks cross-origin (its own origin is a different
+	# host:port). Without this header that fetch fails silently, the same
+	# way it would have during local dev without preview.cors: true (see
+	# vite.config.js).
+	#
+	# Wildcard is fine for this pilot since the shell's origin isn't fixed
+	# yet, but scope this to the shell's actual origin once one exists
+	# outside localhost.
+	header Access-Control-Allow-Origin *
+
+	file_server
+}

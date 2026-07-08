@@ -1,0 +1,20 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>LegacySite - Home</title>
+</head>
+<body style="font-family: sans-serif; max-width: 420px; margin: 80px auto;">
+    <h2>Welcome, @ViewBag.Username</h2>
+    <p style="color: #666;">You're "logged in". Click the tile below to launch the portal - this signs a one-time token server-side and hands your browser a form that POSTs it to the Gateway.</p>
+
+    <form method="post" action="/Portal/LaunchPortal">
+        <button type="submit" style="padding: 16px 24px; font-size: 16px;">Launch Portal &rarr;</button>
+    </form>
+
+    <p style="margin-top: 40px;"><a href="/Account/Logout">Log out of LegacySite</a></p>
+</body>
+</html>

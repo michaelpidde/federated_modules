@@ -1,0 +1,23 @@
+{
+  "name": "piddecorp-module2-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:standalone": "vite dev",
+    "build": "vite build",
+    "build:watch": "vite build --watch --mode remote",
+    "preview": "vite preview --port 5176 --mode remote"
+  },
+  "dependencies": {
+    "ky": "^2.0.2",
+    "preact": "^10.29.2",
+    "wouter-preact": "^3.10.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.16.12",
+    "@preact/preset-vite": "^2.10.5",
+    "vite": "^8.1.0"
+  }
+}

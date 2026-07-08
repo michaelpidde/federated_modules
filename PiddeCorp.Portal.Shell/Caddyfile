@@ -1,0 +1,39 @@
+:80 {
+	root * /usr/share/caddy
+
+	# `route` disables Caddy's automatic directive reordering so these run
+	# in the written order - reverse_proxy has to get first look at its
+	# paths before try_files rewrites everything else to /index.html below.
+	route {
+		# PiddeCorp.Gateway is meant to be the only public origin in
+		# production, reached via path-based reverse-proxy routes (see
+		# PiddeCorp.Gateway/appsettings.json). This container still runs on
+		# its own port for this pilot, so these fill the same role
+		# vite.config.ts's dev-server proxy did for /auth (and the
+		# /taskmanager/api proxy that was only ever a TODO there, never
+		# wired up) - keeping these same-origin, as the browser sees it at
+		# localhost:5175, is what keeps the Gateway session cookie's scope
+		# correct (see useAuthMe.ts / tasks.js).
+		reverse_proxy /auth/* http://gateway:8080
+		reverse_proxy /dev/login http://gateway:8080
+
+		# Scoped to /taskmanager/api specifically, not the broader
+		# /taskmanager prefix - the shell owns plain page navigation like
+		# /taskmanager/tasks client-side (wouter). A wider rule here would
+		# intercept a direct load/refresh into that route and forward it to
+		# the Gateway/backend chain instead, which has no page route for
+		# it (same reasoning TaskManager.UI's own vite.config.js documents
+		# for its standalone-dev proxy).
+		reverse_proxy /taskmanager/api/* http://gateway:8080
+		
+		# Add proxy for module2 API, same comment as above essentially
+		reverse_proxy /module2/api/* http://gateway:8080
+
+		# SPA fallback: a direct load or refresh into a deep route (e.g.
+		# /taskmanager/tasks) needs to still resolve to index.html, not
+		# 404 - only the app's own JS (wouter) knows those routes exist.
+		try_files {path} /index.html
+
+		file_server
+	}
+}
