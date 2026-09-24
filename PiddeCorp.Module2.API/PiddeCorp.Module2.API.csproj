@@ -8,10 +8,15 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
+    <PackageReference Include="PiddeCorp.EnterpriseLogging" Version="1.1.0" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="keys\PiddeCorp.Gateway.Public.pem" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PiddeCorp.ServiceDefaults\PiddeCorp.ServiceDefaults.csproj" />
   </ItemGroup>
 
 </Project>

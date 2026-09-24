@@ -1,3 +1,4 @@
+using PiddeCorp.EnterpriseLogging;
 using PiddeCorp.LegacySite.Auth;
 
 // ---------------------------------------------------------------------------
@@ -15,6 +16,13 @@ using PiddeCorp.LegacySite.Auth;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+builder.AddEnterpriseLogging(o => {
+        o.ServiceName = "PiddeCorp.LegacySite";
+        o.ForwardToProviders = true; // so Aspire ServiceDefaults' OTel logging provider gets events
+    }
+);
+builder.AddServiceDefaults();
+
 builder.Services.AddControllersWithViews();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options => {
@@ -25,6 +33,9 @@ builder.Services.AddSession(options => {
 builder.Services.AddSingleton<RelayTokenIssuer>();
 
 WebApplication app = builder.Build();
+
+app.UseEnterpriseLogging();
+app.MapDefaultEndpoints();
 
 app.UseStaticFiles();
 app.UseSession();

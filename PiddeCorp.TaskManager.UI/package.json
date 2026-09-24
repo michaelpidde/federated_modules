@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:standalone": "vite dev",
     "build": "vite build",
+    "build:remote": "vite build --mode remote",
     "build:watch": "vite build --watch --mode remote",
     "preview": "vite preview --port 5174 --mode remote"
   },

@@ -8,6 +8,12 @@ import { federation } from '@module-federation/vite'
 // future Module Federation remote port (see the placeholder entry below).
 const shellDevPort = 5175
 
+// Defaults to the Gateway's container port mapping (see build.bat's
+// `podman run ... -p 8082:8080 ... gateway`). Aspire's AppHost overrides this
+// via the GATEWAY_URL env var, since nothing listens on 8082 there - see
+// PiddeCorp.AppHost/AppHost.cs and PortalController.cs's matching override.
+const gatewayProxyTarget = process.env.GATEWAY_URL ?? 'http://localhost:8082'
+
 export default defineConfig({
   server: {
     port: shellDevPort,
@@ -27,15 +33,30 @@ export default defineConfig({
       // Enabling CORS instead would paper over that difference rather than
       // reproduce it - don't "simplify" this back to CORS later.
       '/auth': {
-        // Matches the Gateway's container port mapping (see build.bat's
-        // `podman run ... -p 8082:8080 ... gateway`), the same port
-        // PiddeCorp.LegacySite's PortalController already hardcodes for
-        // reaching the Gateway.
-        target: 'http://localhost:8082',
+        target: gatewayProxyTarget,
         changeOrigin: true,
       },
-      // TODO: once the TaskManager module's API calls are routed through
-      // the Gateway at /taskmanager/*, proxy that here the same way.
+      // Module BFF calls (see each module's src/api/*.js - they fetch relative
+      // paths like /module2/api/garbage expecting whatever serves the shell to
+      // be same-origin with Gateway) - same reasoning as /auth above.
+      //
+      // Scoped to /module2/api and /taskmanager/api specifically, NOT the
+      // broader /module2 and /taskmanager prefixes: Gateway's own reverse-proxy
+      // routes match /module2/{**catch-all} and /taskmanager/{**catch-all} (see
+      // PiddeCorp.Gateway/appsettings.json), so a wider rule here would also
+      // swallow direct navigation/refresh on module page routes like
+      // /module2/garbage-pit and forward them to Gateway/Module2.API (which has
+      // no page route for it) instead of letting the shell's own client-side
+      // routing handle it. Matches the same scoping each module's own
+      // dev:standalone vite.config.js already uses, for the same reason.
+      '/module2/api': {
+        target: gatewayProxyTarget,
+        changeOrigin: true,
+      },
+      '/taskmanager/api': {
+        target: gatewayProxyTarget,
+        changeOrigin: true,
+      },
     },
   },
   base: `http://localhost:${shellDevPort}`,

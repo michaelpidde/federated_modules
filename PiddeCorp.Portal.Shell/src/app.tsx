@@ -4,6 +4,12 @@ import {TaskManagerModule} from './components/TaskManagerModule'
 import {Module2Module} from './components/Module2Module'
 import {SideNav} from './components/SideNav'
 
+// Defaults to LegacySite's container port mapping (see build.bat's
+// `podman run ... -p 8083:8080 ... legacysite`). Aspire's AppHost overrides this
+// via VITE_LEGACY_SITE_URL, since LegacySite runs on a different port there -
+// see PiddeCorp.AppHost/AppHost.cs.
+const legacySiteUrl = import.meta.env.VITE_LEGACY_SITE_URL || 'http://localhost:8083';
+
 export function App() {
     const {status, data} = useAuthMe();
     const title = <h1>PiddeCorp Portal</h1>;
@@ -17,7 +23,7 @@ export function App() {
             <div className="shell-layout">
                 <header className="shell-header">
                     {title}
-                    <p className="user">You're not signed in. Launch the portal from <a href="http://localhost:8083">LegacySite</a> to start a session.</p>
+                    <p className="user">You're not signed in. Launch the portal from <a href={legacySiteUrl}>LegacySite</a> to start a session.</p>
                 </header>
             </div>
         )

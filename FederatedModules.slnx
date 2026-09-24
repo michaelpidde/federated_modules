@@ -1,9 +1,12 @@
 <Solution>
+  <Project Path="PiddeCorp.AppHost/PiddeCorp.AppHost.csproj" />
+  <Project Path="PiddeCorp.EnterpriseLogging/PiddeCorp.EnterpriseLogging.csproj" />
   <Project Path="PiddeCorp.Gateway/PiddeCorp.Gateway.csproj" />
   <Project Path="PiddeCorp.LegacySite/PiddeCorp.LegacySite.csproj" />
   <Project Path="PiddeCorp.Module2.API/PiddeCorp.Module2.API.csproj" />
   <Project Path="PiddeCorp.Module2.UI/PiddeCorp.Module2.UI.csproj" />
   <Project Path="PiddeCorp.Portal.Shell/PiddeCorp.Portal.Shell.csproj" />
+  <Project Path="PiddeCorp.ServiceDefaults/PiddeCorp.ServiceDefaults.csproj" />
   <Project Path="PiddeCorp.TaskManager.API/PiddeCorp.TaskManager.API.csproj" />
   <Project Path="PiddeCorp.TaskManager.UI/PiddeCorp.TaskManager.UI.csproj" />
 </Solution>

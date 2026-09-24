@@ -1,12 +1,20 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using PiddeCorp.EnterpriseLogging;
 
 const string GatewayIssuer = "piddecorp-gateway";
 const string Module2Audience = "module2-api";
 const string GatewayPublicKeyRelativePath = "keys/PiddeCorp.Gateway.Public.pem";
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+builder.AddEnterpriseLogging(o => {
+        o.ServiceName = "PiddeCorp.Module2.API";
+        o.ForwardToProviders = true; // so Aspire ServiceDefaults' OTel logging provider gets events
+    }
+);
+builder.AddServiceDefaults();
 
 RSA gatewayRsa = RSA.Create();
 gatewayRsa.ImportFromPem(
@@ -47,6 +55,9 @@ builder.Services.AddCors(options => {
 );
 
 WebApplication app = builder.Build();
+
+app.UseEnterpriseLogging();
+app.MapDefaultEndpoints();
 
 app.UseCors("DevPolicy");
 

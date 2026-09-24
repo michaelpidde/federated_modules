@@ -3,11 +3,16 @@ using PiddeCorp.LegacySite.Auth;
 
 namespace PiddeCorp.LegacySite.Controllers;
 
-public class PortalController(RelayTokenIssuer issuer) : Controller {
-    // Hardcoded on purpose for the pilot - matches Program.cs's applicationUrl
-    // in the Gateway project's launchSettings.json.
-    private const string GatewayExternalLoginUrl = "http://localhost:8082/auth/external-login";
-    
+public class PortalController(RelayTokenIssuer issuer, IConfiguration configuration) : Controller {
+    // Default matches Program.cs's applicationUrl in the Gateway project's
+    // launchSettings.json for the containerized/k8s topology (see build.bat's
+    // `-p 8082:8080` mapping). Overridden via Gateway:ExternalLoginUrl when Gateway
+    // isn't reachable there - e.g. the Aspire AppHost points this at Gateway's
+    // actual local dev endpoint instead, since nothing is listening on 8082 there.
+    private const string DefaultGatewayExternalLoginUrl = "http://localhost:8082/auth/external-login";
+
+    private string GatewayExternalLoginUrl => configuration["Gateway:ExternalLoginUrl"] ?? DefaultGatewayExternalLoginUrl;
+
     // The "tile" page - only reachable once "logged in" to fake LegacySite.
     public IActionResult Tile() {
         string? username = HttpContext.Session.GetString("LegacyUser");

@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="PiddeCorp.EnterpriseLogging" Version="1.1.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
   </ItemGroup>
 
@@ -84,6 +85,10 @@
 
   <ItemGroup>
     <Folder Include="wwwroot\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PiddeCorp.ServiceDefaults\PiddeCorp.ServiceDefaults.csproj" />
   </ItemGroup>
 
 </Project>

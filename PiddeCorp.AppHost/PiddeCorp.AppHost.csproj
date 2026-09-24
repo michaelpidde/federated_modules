@@ -1,0 +1,23 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.5.4">
+
+  <ItemGroup>
+    <ProjectReference Include="..\PiddeCorp.Gateway\PiddeCorp.Gateway.csproj" />
+    <ProjectReference Include="..\PiddeCorp.LegacySite\PiddeCorp.LegacySite.csproj" />
+    <ProjectReference Include="..\PiddeCorp.Module2.API\PiddeCorp.Module2.API.csproj" />
+    <ProjectReference Include="..\PiddeCorp.TaskManager.API\PiddeCorp.TaskManager.API.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.NodeJs" Version="9.5.2" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AspireUseCliBundle>true</AspireUseCliBundle>
+    <UserSecretsId>f317c0a5-6612-424d-b1fb-221a9c94893a</UserSecretsId>
+  </PropertyGroup>
+
+</Project>

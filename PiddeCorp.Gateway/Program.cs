@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.IdentityModel.Tokens;
+using PiddeCorp.EnterpriseLogging;
 using PiddeCorp.Gateway.Auth;
 using StackExchange.Redis;
 using Yarp.ReverseProxy.Transforms;
@@ -24,12 +25,18 @@ const string LegacySiteIssuer = "legacysite";
 const string GatewayAudience = "piddecorp-gateway";
 const string PublicKeyRelativePath = "keys/PiddeCorp.LegacySite.Public.pem";
 const string PrivateKeyRelativePath = "keys/PiddeCorp.Gateway.Private.pem";
-const string ReplayGuardKeyPrefix = "gateway:relay-jti:";
 const string LocalDevCorsPolicy = "LocalDevOrigins";
 
 TimeSpan replayGuardTtl = TimeSpan.FromMinutes(5);
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+builder.AddEnterpriseLogging(o => {
+        o.ServiceName = "PiddeCorp.Gateway";
+        o.ForwardToProviders = true; // so Aspire ServiceDefaults' OTel logging provider gets events
+    }
+);
+builder.AddServiceDefaults();
 
 RSA rsa = RSA.Create();
 rsa.ImportFromPem(File.ReadAllText(Path.Combine(builder.Environment.ContentRootPath, PublicKeyRelativePath)));
@@ -87,12 +94,25 @@ if(routesMissingInternalAudience.Count > 0) {
     );
 }
 
-// Explicit config key, explicit fallback - no magic connection-string discovery.
-string redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
+// Redis:Enabled defaults to true - unset it explicitly (Aspire's local/AVD profile
+// does this) to fall back to process-memory session storage and replay guarding
+// instead. That's a deliberate downgrade for environments that can't run a Redis
+// container: no persistence across restarts, no sharing across instances. Never
+// disable this for anything that isn't a single-instance local dev process.
+bool redisEnabled = builder.Configuration.GetValue("Redis:Enabled", true);
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(
-    _ => ConnectionMultiplexer.Connect(redisConnectionString)
-);
+if(redisEnabled) {
+    // Explicit config key, explicit fallback - no magic connection-string discovery.
+    string redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
+    IConnectionMultiplexer redisMultiplexer = ConnectionMultiplexer.Connect(redisConnectionString);
+
+    builder.Services.AddSingleton(redisMultiplexer);
+    builder.Services.AddSingleton<ITicketStore, RedisTicketStore>();
+    builder.Services.AddSingleton<IReplayGuard, RedisReplayGuard>();
+} else {
+    builder.Services.AddSingleton<ITicketStore, InMemoryTicketStore>();
+    builder.Services.AddSingleton<IReplayGuard, InMemoryReplayGuard>();
+}
 
 builder.Services
        .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -108,7 +128,7 @@ builder.Services
                options.ExpireTimeSpan = TimeSpan.FromHours(1);
                options.SlidingExpiration = true;
                // options.SessionStore is deliberately NOT set here - it needs the
-               // IConnectionMultiplexer from DI, which isn't available yet at this
+               // ITicketStore from DI, which isn't available yet at this
                // point in startup. Wired up just below instead.
 
                // Cookie auth defaults to challenging with a browser redirect to a
@@ -128,11 +148,12 @@ builder.Services
            }
        );
 
-// This is what actually swaps "claims live inside the cookie" for "cookie
-// holds a session key, claims live in Redis" - see Auth/RedisTicketStore.cs.
+// This is what actually swaps "claims live inside the cookie" for "cookie holds a
+// session key, claims live server-side" - see Auth/RedisTicketStore.cs and
+// Auth/InMemoryTicketStore.cs, whichever got registered as ITicketStore above.
 builder.Services
        .AddOptions<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme)
-       .Configure<IConnectionMultiplexer>((options, redis) => { options.SessionStore = new RedisTicketStore(redis); });
+       .Configure<ITicketStore>((options, store) => { options.SessionStore = store; });
 
 // Named to match the "AuthorizationPolicy" referenced by proxied routes in
 // appsettings.json - YARP applies it per-route when it maps the endpoints.
@@ -165,6 +186,9 @@ builder.Services.AddCors(options => {
 
 WebApplication app = builder.Build();
 
+app.UseEnterpriseLogging();
+app.MapDefaultEndpoints();
+
 // Before auth/authorization: CORS has to run early enough to handle
 // preflight OPTIONS requests before anything else in the pipeline would
 // otherwise reject them.
@@ -183,7 +207,7 @@ async Task EstablishGatewaySessionAsync(HttpContext ctx, string userId, string n
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, sessionPrincipal);
 }
 
-app.MapPost("/auth/external-login", async (HttpContext ctx, IConnectionMultiplexer redis) => {
+app.MapPost("/auth/external-login", async (HttpContext ctx, IReplayGuard replayGuard) => {
         IFormCollection form = await ctx.Request.ReadFormAsync();
         string token = form["token"].ToString();
         
@@ -219,17 +243,8 @@ app.MapPost("/auth/external-login", async (HttpContext ctx, IConnectionMultiplex
             return Results.Unauthorized();
         }
         
-        // SET key value EX ttl NX - atomic check-and-set in a single round trip.
-        // Returns false if the key already existed, which is exactly our replay
-        // check. No cleanup job needed either - Redis expires the key on its own.
-        IDatabase db = redis.GetDatabase();
-        bool wasFirstUse = await db.StringSetAsync(
-            ReplayGuardKeyPrefix + jti,
-            value: "1",
-            expiry: replayGuardTtl,
-            when: When.NotExists
-        );
-        
+        bool wasFirstUse = await replayGuard.TryConsumeAsync(jti, replayGuardTtl);
+
         if(!wasFirstUse) {
             app.Logger.LogWarning("Relay token jti {Jti} was already consumed - rejecting possible replay", jti);
             return Results.Unauthorized();
