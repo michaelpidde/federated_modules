@@ -7,19 +7,25 @@
     "dev": "vite",
     "dev:standalone": "vite dev",
     "build": "vite build",
-    "build:remote": "vite build --mode remote",
-    "build:watch": "vite build --watch --mode remote",
-    "preview": "vite preview --port 5174 --mode remote"
+    "build:remote": "vite build",
+    "build:watch": "vite build --watch",
+    "preview": "vite preview --port 5174",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "ky": "^2.0.2",
-    "preact": "^10.29.2",
-    "tabulator-tables": "^6.5.2",
-    "wouter-preact": "^3.10.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
+    "tabulator-tables": "^6.5.2"
   },
   "devDependencies": {
     "@module-federation/vite": "^1.16.12",
-    "@preact/preset-vite": "^2.10.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/tabulator-tables": "^6.3.6",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^5.9.3",
     "vite": "^8.1.0"
   }
 }

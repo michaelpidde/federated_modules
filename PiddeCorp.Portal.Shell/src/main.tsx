@@ -1,11 +1,10 @@
-import { render } from 'preact'
-import { Router } from 'wouter-preact'
+import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import { App } from './app'
 import './layout.css'
 
-render(
-  <Router>
+createRoot(document.getElementById('app')!).render(
+  <BrowserRouter>
     <App />
-  </Router>,
-  document.getElementById('app')!
+  </BrowserRouter>
 )

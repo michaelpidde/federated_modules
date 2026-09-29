@@ -63,14 +63,11 @@ builder.AddNpmApp("portal-shell", "../PiddeCorp.Portal.Shell", "dev")
        .WithEnvironment("VITE_LEGACY_SITE_URL", legacySite.GetEndpoint("https"))
        .WaitFor(gateway);
 
-// TaskManager.UI and Module2.UI are Module Federation REMOTES, not the host - their
-// router only gets the right base path ("/taskmanager", "/module2") when built in
-// Vite's "remote" mode (see each project's .env.remote and src/app.jsx). That mode is
-// only wired up on the build:watch/preview scripts, not "dev" - `npm run dev` leaves
-// the router base empty, which matches routes fine standalone but never matches once
-// mounted under /taskmanager or /module2 by the shell, so nested pages (and the data
-// fetches their components trigger) silently never render. So these run as a one-shot
-// remote-mode build, then a preview server for the built output - not "dev".
+// TaskManager.UI and Module2.UI are Module Federation REMOTES, not the host.
+// Module Federation for Vite only gives the HOST a live dev server with HMR -
+// there's no way to run a remote's own `vite dev` and have the shell pick up
+// live changes (see each remote's own README). So these run as a one-shot
+// build, then a preview server for the built output - not "dev".
 IResourceBuilder<NodeAppResource> taskManagerUiBuild = builder
     .AddNpmApp("taskmanager-ui-build", "../PiddeCorp.TaskManager.UI", "build:remote");
 

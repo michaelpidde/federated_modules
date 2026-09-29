@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import preact from '@preact/preset-vite'
+import react from '@vitejs/plugin-react'
 import { federation } from '@module-federation/vite'
 
 // Keep this distinct from the Gateway (7020/7021), the fake LegacySite
@@ -67,7 +67,7 @@ export default defineConfig({
     target: 'chrome89',
   },
   plugins: [
-    preact(),
+    react(),
     ...federation({
       name: 'shell',
       remotes: {
@@ -84,18 +84,24 @@ export default defineConfig({
       },
       // `singleton: true` is required here, not optional - verified against
       // a real host+remote integration test. The shorthand array form
-      // (`shared: ['preact', ...]`) leaves `singleton` at its default of
+      // (`shared: ['react', ...]`) leaves `singleton` at its default of
       // `false`, which lets the runtime load a second, separate copy of
-      // preact/hooks instead of actually sharing one. That second copy has
-      // its own internal "currently rendering" state, so hooks called from
-      // it (e.g. wouter-preact's useContext) blow up with "Cannot read
-      // properties of undefined (reading 'context')" - the exact failure
-      // mode this config exists to prevent. Must match TaskManager.UI's
-      // vite.config.js shared block exactly.
+      // react-dom (breaking rendering entirely - two ReactDOM instances
+      // can't share one root) and, just as badly for this app specifically,
+      // a second copy of react-router-dom. Each remote's App renders a bare
+      // <Routes> with no <BrowserRouter> of its own (see app.tsx) - it's a
+      // true descendant of this shell's <BrowserRouter>, reading this
+      // router's ambient context via useContext. If react-router-dom
+      // weren't a singleton, the remote's copy would be calling useContext
+      // against a *different* RouterContext object than the one this
+      // shell's copy provides, and would fail the same way a duplicated
+      // preact/hooks copy used to (see this project's README) - "Cannot
+      // read properties of undefined (reading 'context')" or equivalent.
+      // Must match each remote's vite.config.ts shared block exactly.
       shared: {
-        preact: { singleton: true },
-        'preact/hooks': { singleton: true },
-        'preact/compat': { singleton: true },
+        react: { singleton: true },
+        'react-dom': { singleton: true },
+        'react-router-dom': { singleton: true },
       },
     }),
   ],

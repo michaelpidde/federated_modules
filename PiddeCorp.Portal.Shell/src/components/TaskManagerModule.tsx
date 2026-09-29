@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'preact/hooks'
-import type { ComponentType } from 'preact'
+import { useEffect, useState } from 'react'
+import type { ComponentType } from 'react'
 
 type ModuleState =
   | { status: 'loading' }

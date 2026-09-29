@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'preact/hooks'
-import { Link, useLocation } from 'wouter-preact'
+import { useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { modules, type ModuleRegistryEntry, type NavItem } from '../modules'
 
 type NavState =
@@ -8,8 +8,8 @@ type NavState =
   | { status: 'unavailable' }
 
 function useActiveModule(): ModuleRegistryEntry | undefined {
-  const [location] = useLocation()
-  return modules.find(m => location === m.pathPrefix || location.startsWith(m.pathPrefix + '/'))
+  const { pathname } = useLocation()
+  return modules.find(m => pathname === m.pathPrefix || pathname.startsWith(m.pathPrefix + '/'))
 }
 
 // A module's own nav items, fetched from its federated "./NavItems" export
@@ -19,7 +19,7 @@ function useActiveModule(): ModuleRegistryEntry | undefined {
 // end up nested inside its own <Router base> and produce the wrong hrefs.
 function ModuleNav({ module }: { module: ModuleRegistryEntry }) {
   const [state, setState] = useState<NavState>({ status: 'loading' })
-  const [location] = useLocation()
+  const { pathname } = useLocation()
 
   useEffect(() => {
     let cancelled = false
@@ -49,10 +49,10 @@ function ModuleNav({ module }: { module: ModuleRegistryEntry }) {
         <ul className="nav-list">
           {state.items.map(item => {
             const href = module.pathPrefix + item.path
-            const isCurrent = location === href || location.startsWith(href + '/')
+            const isCurrent = pathname === href || pathname.startsWith(href + '/')
             return (
               <li key={item.path}>
-                <Link href={href} className={isCurrent ? 'is-current' : undefined}>
+                <Link to={href} className={isCurrent ? 'is-current' : undefined}>
                   {item.label}
                 </Link>
               </li>
@@ -73,7 +73,7 @@ function ModuleDirectory() {
       <ul className="nav-list">
         {modules.map(module => (
           <li key={module.pathPrefix}>
-            <Link href={module.pathPrefix + '/'}>{module.label}</Link>
+            <Link to={module.pathPrefix + '/'}>{module.label}</Link>
           </li>
         ))}
       </ul>

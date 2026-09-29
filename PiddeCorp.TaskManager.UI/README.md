@@ -1,8 +1,8 @@
 # PiddeCorp.TaskManager.UI
 
-The TaskManager module UI. Preact + Vite. Runs standalone (its own dev
-server, own routes) but is also set up as a Module Federation **remote**,
-consumed by PiddeCorp.Portal.Shell (the host).
+The TaskManager module UI. React + Vite + TypeScript. Runs standalone (its
+own dev server, own routes) but is also set up as a Module Federation
+**remote**, consumed by PiddeCorp.Portal.Shell (the host).
 
 ## Running standalone
 
@@ -70,51 +70,55 @@ shell's browser tab to see the change.**
 
 ## What's exposed
 
-```js
-// vite.config.js
+```ts
+// vite.config.ts
 exposes: {
-  './App': './src/app.jsx',
+  './App': './src/app.tsx',
 }
 ```
 
-The whole app (`App`, from `src/app.jsx`), not a bare leaf component. `App`
-owns its own routing (`<Router base="/taskmanager">` wrapping the existing
-`/` and `/tasks` routes via `wouter-preact`) so that everything under
+The whole app (`App`, from `src/app.tsx`), not a bare leaf component. `App`
+owns its own routing (a bare `<Routes>` wrapping the existing `/` and
+`/tasks` routes via `react-router-dom`) so that everything under
 `/taskmanager` - current and future sub-routes alike - works without the
 shell needing to know what routes exist. `App` is exported both as a named
-export (used by this project's own `src/main.jsx`) and as `default` (what
+export (used by this project's own `src/main.tsx`) and as `default` (what
 the shell's federation consumer reads off the loaded module).
 
-## Routing: wouter-preact, not preact-router
+## Routing: descendant `<Routes>`, not a `base` prop
 
-This app switched from `preact-router` to `wouter-preact`. Reason:
-`preact-router` has no native base-path support (unresolved upstream -
-see preactjs/preact-router issues #212, #263, #279), and this app needs one
-now that it's mounted under `/taskmanager` by the shell. `wouter-preact`
-supports this natively via the `base` prop on `<Router>`, which is what
-lets `<Link href="/tasks">` correctly resolve to `/taskmanager/tasks`
-whether this app is running standalone or embedded in the shell.
+This app's `App` renders a bare `<Routes>` with **no `<BrowserRouter>` of its
+own**. When the shell mounts it under its own `<Route path="/taskmanager/*">`
+(see `PiddeCorp.Portal.Shell/src/app.tsx`), this `<Routes>` becomes a true
+*descendant* of the shell's `<BrowserRouter>`, reading its ambient router
+context via `useContext` - react-router's built-in pattern for exactly this
+shell/remote-under-a-path-prefix shape. That's what lets `/` and `/tasks`
+resolve to `/taskmanager` and `/taskmanager/tasks` with no `base`/prefix
+plumbing anywhere. Standalone (`npm run dev:standalone`), `src/main.tsx`
+supplies its own top-level `<BrowserRouter>` instead, so the exact same
+route definitions resolve at this app's own root with no prefix at all.
 
 ## `shared` must use the object form with `singleton: true`
 
-```js
-// vite.config.js
+```ts
+// vite.config.ts
 shared: {
-  preact: { singleton: true },
-  'preact/hooks': { singleton: true },
-  'preact/compat': { singleton: true }
+  react: { singleton: true },
+  'react-dom': { singleton: true },
+  'react-router-dom': { singleton: true }
 }
 ```
 
 This has to be identical to `PiddeCorp.Portal.Shell`'s `vite.config.ts`
-`shared` block. The shorthand array form (`shared: ['preact', ...]`) looks
-equivalent but isn't - it leaves `singleton` at its default of `false`.
-Verified the hard way: with the array form, this remote and the shell (host)
-each ended up with a *separate* copy of `preact/hooks` at runtime, and
-calling a hook from this app's copy (`wouter-preact`'s `useContext`, used
-internally by its `Router`) threw `Cannot read properties of undefined
-(reading 'context')` - because that copy's internal "currently rendering
-component" state was never populated (that happens on whichever copy
-actually renders, which was the host's). This is the exact "hooks break in
-confusing ways" failure the `shared` config exists to prevent. The object
-form with `singleton: true` on both sides is required, not just tidier.
+`shared` block. The shorthand array form (`shared: ['react', ...]`) looks
+equivalent but isn't - it leaves `singleton` at its default of `false`,
+which would let the runtime load a second, separate copy of `react-dom`, and
+- specific to this app's routing - a second copy of `react-router-dom` too.
+Because this app's `<Routes>` is a genuine descendant of the shell's
+`<BrowserRouter>` (see "Routing" above), it reads the shell's router context
+via `useContext` - if `react-router-dom` weren't a true singleton, that call
+would hit a *different* `RouterContext` object than the one the shell's copy
+provides, and fail the same class of "hooks/context break in confusing
+ways" failure this repo already hit once with a duplicated `preact/hooks`
+copy (`Cannot read properties of undefined (reading 'context')`). The object
+form with `singleton: true` on all three is required, not just tidier.

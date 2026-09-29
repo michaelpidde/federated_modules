@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from 'preact/hooks'
-import type { ComponentType } from 'preact'
+﻿import { useEffect, useState } from 'react'
+import type { ComponentType } from 'react'
 
 type ModuleState =
     | { status: 'loading' }
@@ -12,6 +12,9 @@ export function Module2Module() {
     useEffect(() => {
         let cancelled = false
         
+        // @ts-expect-error - "module2" is a federated remote, not a real
+        // package on disk, so TS can't resolve this until the remote generates
+        // real types (see the dts option in @module-federation/vite).
         import('module2/App')
             .then(mod => {
                 if (!cancelled) {

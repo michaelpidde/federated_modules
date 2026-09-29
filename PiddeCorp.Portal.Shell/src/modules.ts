@@ -32,6 +32,10 @@ export const modules: ModuleRegistryEntry[] = [
     pathPrefix: '/module2',
     label: 'Module 2',
     loadNavItems: () =>
-        import('module2/NavItems'),
+      // @ts-expect-error - "module2" is a federated remote, not a real
+      // package on disk, so TS can't resolve this until the remote generates
+      // real types (see the dts option in @module-federation/vite) - same
+      // reasoning as TaskManagerModule.tsx's import('taskmanager/App').
+      import('module2/NavItems'),
   },
 ]

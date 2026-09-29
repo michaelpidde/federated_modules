@@ -1,9 +1,9 @@
-﻿import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect } from 'react';
 import { getGarbage } from '../api/garbage';
 
 export default function GarbagePit() {
-    const [garbage, setGarbage] = useState([]);
-    const [error, setError] = useState(null);
+    const [garbage, setGarbage] = useState('');
+    const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
         getGarbage()

@@ -1,4 +1,3 @@
-import { Link } from 'wouter-preact';
 import dragon from './dragon.txt?raw';
 
 export default function Home() {
@@ -8,4 +7,4 @@ export default function Home() {
             <pre>{dragon}</pre>
         </div>
     );
-};
+}

@@ -1,4 +1,4 @@
-import {Route, Switch} from 'wouter-preact'
+import {Route, Routes} from 'react-router-dom'
 import {useAuthMe} from './auth/useAuthMe'
 import {TaskManagerModule} from './components/TaskManagerModule'
 import {Module2Module} from './components/Module2Module'
@@ -39,45 +39,38 @@ export function App() {
                 <SideNav/>
             </aside>
             <main className="shell-main">
-                <Switch>
-                    {/* Deliberately no `nest` prop here. TaskManager.UI's own App
-              already wraps itself in <Router base="/taskmanager"> (see
-              PiddeCorp.TaskManager.UI/src/app.jsx) - it owns its base path
-              internally so it works whether it's running standalone or
-              embedded here. wouter's `base` stacks across nested <Router>s
-              (parent base + own base - see the Router source), and `nest`
-              on a <Route> auto-wraps its match in an implicit
-              <Router base={matchedPrefix}>. If this route also used
-              `nest`, the remote would end up nested inside a base of
-              "/taskmanager" from here PLUS its own "/taskmanager", i.e.
-              scoped to "/taskmanager/taskmanager" - breaking every deep
-              link like /taskmanager/tasks. Handing off via the pattern
-              alone (no `nest`) is sufficient, and doesn't touch base at
-              all - the remote's own <Router base="/taskmanager"> is the
-              only place base gets applied.
+                <Routes>
+                    {/* Each of these is a "descendant routes" splat route: the
+              trailing `/*` matches both the bare prefix ("/taskmanager")
+              and everything nested under it ("/taskmanager/tasks", etc),
+              and hands the whole remainder of the URL off to whatever
+              <Routes> the matched element renders further down. TaskManager.UI's
+              own App (see PiddeCorp.TaskManager.UI/src/app.tsx) renders a
+              bare <Routes> with no <BrowserRouter> of its own - it's a true
+              descendant of THIS <BrowserRouter> (see src/main.tsx), reading
+              this router's ambient context rather than owning a separate
+              one. That's what lets its own "/" and "/tasks" route
+              definitions resolve correctly relative to "/taskmanager"
+              without either side needing to know about a "base"/prefix at
+              all - no equivalent of wouter's nested-Router-with-base dance
+              needed here.
 
-              Pattern note: "/taskmanager*" (no slash before the `*`) does
-              NOT do what it looks like it does here - regexparam only
-              special-cases a `*` that occupies its own path segment. Glued
-              directly onto a literal like this, it's parsed as a plain
-              regex quantifier on the preceding character, and outside
-              `nest`/loose mode the match is anchored to end-of-string
-              regardless - so "/taskmanager*" only matches "/taskmanager"
-              itself, never "/taskmanager/tasks". "/taskmanager/*?" (an
-              optional wildcard *segment*, per wouter's own "/orders/*?"
-              cheatsheet example) is what actually matches both the bare
-              path and everything nested under it. Verified against a real
-              deep link - see PiddeCorp.Portal.Shell's README. */}
-                    <Route path="/taskmanager/*?">
-                        <TaskManagerModule/>
-                    </Route>
-                    <Route path="/module2/*?">
-                        <Module2Module/>
-                    </Route>
-                    <Route>
-                        <p>Select a module.</p>
-                    </Route>
-                </Switch>
+              This does mean react-router-dom itself has to be a true
+              Module Federation singleton between this shell and every
+              remote (see vite.config.ts's `shared` block) - if it weren't,
+              the remote's <Routes> would be calling useContext against a
+              *different* RouterContext object than the one this
+              <BrowserRouter> provides, and would fail the same way a
+              duplicated preact/hooks copy used to (see this project's
+              README). Verified against a real running shell + remote pair,
+              not just reasoned about - by loading /taskmanager,
+              /taskmanager/tasks, /module2, and /module2/garbage-pit through
+              the shell and confirming each remote resolves the right page
+              with no console errors. */}
+                    <Route path="/taskmanager/*" element={<TaskManagerModule/>}/>
+                    <Route path="/module2/*" element={<Module2Module/>}/>
+                    <Route path="*" element={<p>Select a module.</p>}/>
+                </Routes>
             </main>
         </div>
     )

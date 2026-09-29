@@ -1,10 +1,10 @@
-﻿import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect } from 'react';
 import { TaskGrid } from '../components/TaskGrid';
-import { getOpenTasks } from '../api/tasks';
+import { getOpenTasks, type OpenTask } from '../api/tasks';
 
 export default function Tasks() {
-    const [tasks, setTasks] = useState([]);
-    const [error, setError] = useState(null);
+    const [tasks, setTasks] = useState<OpenTask[]>([]);
+    const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
         getOpenTasks()

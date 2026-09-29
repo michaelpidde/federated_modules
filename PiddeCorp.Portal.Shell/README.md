@@ -1,6 +1,6 @@
 # PiddeCorp.Portal.Shell
 
-The host (shell) application for the micro-frontend portal. Preact + Vite +
+The host (shell) application for the micro-frontend portal. React + Vite +
 TypeScript, using Module Federation (`@module-federation/vite`) to load
 module UIs - starting with PiddeCorp.TaskManager.UI - as independently
 built/deployed remotes.
@@ -37,75 +37,61 @@ from LegacySite instead of rendering a login form.
 `npm run typecheck` runs `tsc --noEmit` if you want to check types without
 starting the dev server.
 
-## Routing: the shell owns `/`, the remote owns everything under `/taskmanager`
+## Routing: descendant `<Routes>`, not a `base` prop
 
-`src/main.tsx` wraps the app root in a plain `<Router>` (no `base` - the
-shell owns the root namespace). `src/app.tsx` then does the handoff:
+`src/main.tsx` wraps the app root in one real `<BrowserRouter>` (the shell
+owns the root namespace). `src/app.tsx` then does the handoff:
 
 ```tsx
-<Switch>
-  <Route path="/taskmanager/*?">
-    <TaskManagerModule />
-  </Route>
-  <Route>
-    <p>Select a module.</p>
-  </Route>
-</Switch>
+<Routes>
+  <Route path="/taskmanager/*" element={<TaskManagerModule />} />
+  <Route path="/module2/*" element={<Module2Module />} />
+  <Route path="*" element={<p>Select a module.</p>} />
+</Routes>
 ```
 
-Two things about that route are easy to get wrong and worth spelling out:
+The trailing `/*` on each splat route matches both the bare prefix
+(`/taskmanager`) and everything nested under it (`/taskmanager/tasks`, and
+so on). TaskManager.UI's own `App` (see its `src/app.tsx`) renders a bare
+`<Routes>` with **no `<BrowserRouter>` of its own** - it's a true descendant
+of this shell's `<BrowserRouter>`, reading this router's ambient context via
+`useContext` rather than owning a separate Router instance. That's
+react-router's built-in "descendant routes" pattern, and it's what lets the
+remote's own `/` and `/tasks` route definitions resolve correctly relative
+to `/taskmanager` with no `base`/prefix plumbing anywhere - no equivalent of
+a nested-Router-with-base dance is needed.
 
-**No `nest` prop.** TaskManager.UI's own `App` already wraps itself in
-`<Router base="/taskmanager">` (see its `src/app.jsx`) - it owns its base
-path internally so it works standalone or embedded. wouter's `base` stacks
-across nested `<Router>`s (parent base + own base), and `nest` on a `<Route>`
-auto-wraps its match in an implicit `<Router base={matchedPrefix}>`. Add
-`nest` here too and the remote ends up scoped to `/taskmanager/taskmanager`,
-silently breaking every path one level deep or more. Handing off via the
-path pattern alone, with no `nest`, is correct - the remote's own `Router`
-is the only place `base` gets applied.
-
-**The pattern is `/taskmanager/*?`, not `/taskmanager*`.** The obvious-looking
-`/taskmanager*` (star glued directly onto the literal) does not do what it
-looks like it does: `regexparam` only special-cases a `*` that occupies its
-own path segment. Glued onto a literal like that, it's parsed as a plain
-regex quantifier on the preceding character, and outside of `nest`/loose
-mode the match is still anchored to end-of-string - so it only ever matches
-the bare `/taskmanager`, never `/taskmanager/tasks`. `/taskmanager/*?` (an
-*optional* wildcard segment - the same shape as wouter's own `/orders/*?`
-cheatsheet example) is what actually matches both the bare path and
-everything nested under it.
-
-Both of the above were verified against a real, running shell + remote pair
-(not just reasoned about) - by watching `useLocation()` inside the actual
-remote resolve to `/`, `/tasks`, and `/tasks/123` for `/taskmanager`,
-`/taskmanager/tasks`, and `/taskmanager/tasks/123` respectively, with no
-double-stripping and no crash.
+This was verified against a real, running shell + remote pair (not just
+reasoned about) - by loading `/taskmanager`, `/taskmanager/tasks`,
+`/module2`, and `/module2/garbage-pit` through the shell and confirming each
+remote resolves the right page with no console errors.
 
 ## `shared` must use the object form with `singleton: true`
 
 ```ts
 // vite.config.ts
 shared: {
-  preact: { singleton: true },
-  'preact/hooks': { singleton: true },
-  'preact/compat': { singleton: true },
+  react: { singleton: true },
+  'react-dom': { singleton: true },
+  'react-router-dom': { singleton: true },
 },
 ```
 
-The shorthand array form (`shared: ['preact', 'preact/hooks', 'preact/compat']`)
-looks equivalent but isn't - it leaves `singleton` at its default of `false`.
-Verified the hard way: with the array form, the shell (host) and
-TaskManager.UI (remote) each ended up with a *separate* copy of
-`preact/hooks` at runtime, and calling a hook from the remote's copy (e.g.
-wouter-preact's `useContext`, used internally by its `Router`) threw
-`Cannot read properties of undefined (reading 'context')`, because that
-copy's internal "currently rendering component" state was never populated -
-that populating happens on whichever copy actually renders, which was the
-host's. This is the exact "hooks break in confusing ways" failure mode the
-`shared` config exists to prevent in the first place. The object form with
-`singleton: true` on both sides is required, not just tidier. Must match
-`PiddeCorp.TaskManager.UI`'s `vite.config.js` `shared` block exactly.
+The shorthand array form (`shared: ['react', 'react-dom', 'react-router-dom']`)
+looks equivalent but isn't - it leaves `singleton` at its default of `false`,
+which would let the runtime load a second, separate copy of `react-dom`
+(breaking rendering outright) and, specific to this app's routing, a second
+copy of `react-router-dom`. Because the remote's `<Routes>` is a genuine
+**descendant** of this shell's `<BrowserRouter>` (see "Routing" above), it
+reads this shell's router context via `useContext` - if `react-router-dom`
+weren't a true singleton, that `useContext` call would be looking at a
+*different* `RouterContext` object than the one this shell's copy provides,
+and would fail the same class of "hooks/context break in confusing ways"
+failure this repo hit once already with a duplicated `preact/hooks` copy
+(`Cannot read properties of undefined (reading 'context')`). The object form
+with `singleton: true` on all three is required, not just tidier. Must match
+`PiddeCorp.TaskManager.UI`'s and `PiddeCorp.Module2.UI`'s `vite.config.ts`
+`shared` blocks exactly.
 
 ## Dev proxy vs. CORS - why proxy, and don't change this to CORS
 
