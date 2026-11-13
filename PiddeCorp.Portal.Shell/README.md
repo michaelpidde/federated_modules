@@ -7,7 +7,7 @@ built/deployed remotes.
 
 This is a pilot proving out the shell/module split, not a production build.
 Config favors explicit, hardcoded local-dev values over configurability, to
-match the rest of this codebase (PiddeCorp.Gateway, PiddeCorp.LegacySite).
+match the rest of this codebase (PiddeCorp.Gateway).
 
 ## Running the dev server
 
@@ -21,8 +21,7 @@ The shell serves on **http://localhost:5175**. It expects:
 - **PiddeCorp.Gateway** reachable at `http://localhost:8082` - the shell's
   Vite dev server proxies `/auth/*` to it (see "Dev proxy vs. CORS" below).
   That's the Gateway's container port (see `build.bat`'s
-  `podman run ... -p 8082:8080 ... gateway`), the same one
-  `PiddeCorp.LegacySite`'s `PortalController` already hardcodes - not the
+  `podman run ... -p 8082:8080 ... gateway`), not the
   `https://localhost:7020` port `dotnet run`/launchSettings.json uses when
   running the Gateway directly outside a container.
 - **PiddeCorp.TaskManager.UI** built and served as the `taskmanager` remote
@@ -30,9 +29,11 @@ The shell serves on **http://localhost:5175**. It expects:
   `build:watch` + `preview` workflow - Module Federation for Vite only gives
   the *host* live HMR, not the remote).
 
-There is no login UI here and none is planned. If `/auth/me` reports
-`authenticated: false`, the shell just tells the user to launch the portal
-from LegacySite instead of rendering a login form.
+There is no login UI here. If `/auth/me` reports `authenticated: false`,
+the shell navigates to the Gateway's `/auth/login` (a Development-only
+fake-Okta stub until real Okta is integrated), which creates the session and
+redirects back. If that doesn't yield a session, the shell stops after one
+attempt and shows a retry link rather than looping.
 
 `npm run typecheck` runs `tsc --noEmit` if you want to check types without
 starting the dev server.

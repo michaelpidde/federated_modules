@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PiddeCorp.Gateway\PiddeCorp.Gateway.csproj" />
-    <ProjectReference Include="..\PiddeCorp.LegacySite\PiddeCorp.LegacySite.csproj" />
     <ProjectReference Include="..\PiddeCorp.Module2.API\PiddeCorp.Module2.API.csproj" />
     <ProjectReference Include="..\PiddeCorp.TaskManager.API\PiddeCorp.TaskManager.API.csproj" />
   </ItemGroup>

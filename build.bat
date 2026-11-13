@@ -4,12 +4,6 @@ podman rm gateway 2> nul
 podman run -d --name gateway --network pidde-net -p 8082:8080 -e ASPNETCORE_ENVIRONMENT=Production gateway
 
 
-podman build -t legacysite -f PiddeCorp.LegacySite/Dockerfile .
-podman stop legacysite 2> nul
-podman rm legacysite 2> nul
-podman run -d --name legacysite --network pidde-net -p 8083:8080 -e ASPNETCORE_ENVIRONMENT=Production legacysite
-
-
 podman build -t taskmanager.api -f PiddeCorp.TaskManager.API/Dockerfile .
 podman stop taskmanager.api 2> nul
 podman rm taskmanager.api 2> nul

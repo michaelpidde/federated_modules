@@ -12,10 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="keys\PiddeCorp.Gateway.Public.pem" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <ProjectReference Include="..\PiddeCorp.Gateway\PiddeCorp.Gateway.csproj" />
     <ProjectReference Include="..\PiddeCorp.ServiceDefaults\PiddeCorp.ServiceDefaults.csproj" />
   </ItemGroup>
 

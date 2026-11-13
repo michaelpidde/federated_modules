@@ -1,33 +1,47 @@
+import {useEffect} from 'react'
 import {Route, Routes} from 'react-router-dom'
 import {useAuthMe} from './auth/useAuthMe'
 import {TaskManagerModule} from './components/TaskManagerModule'
 import {Module2Module} from './components/Module2Module'
 import {SideNav} from './components/SideNav'
 
-// Defaults to LegacySite's container port mapping (see build.bat's
-// `podman run ... -p 8083:8080 ... legacysite`). Aspire's AppHost overrides this
-// via VITE_LEGACY_SITE_URL, since LegacySite runs on a different port there -
-// see PiddeCorp.AppHost/AppHost.cs.
-const legacySiteUrl = import.meta.env.VITE_LEGACY_SITE_URL || 'http://localhost:8083';
+const LOGIN_ATTEMPTED_KEY = 'piddecorp.loginAttempted';
 
 export function App() {
     const {status, data} = useAuthMe();
     const title = <h1>PiddeCorp Portal</h1>;
 
-    if (status === 'loading') {
-        return <p>Checking session...</p>
+    // No session -> start the authentication loop through the Gateway. The session
+    // cookie is HttpOnly, so the shell can't inspect it; /auth/me is how it finds
+    // out. The Gateway's /auth/login (fake Okta stub for now, real Okta later)
+    // establishes the session and redirects back here. The sessionStorage flag
+    // stops an endless redirect loop if login "succeeds" but no session sticks.
+    const needsLogin = status === 'ready' && !data.authenticated;
+    const alreadyTriedLogin = sessionStorage.getItem(LOGIN_ATTEMPTED_KEY) === 'true';
+
+    useEffect(() => {
+        if (needsLogin && !alreadyTriedLogin) {
+            sessionStorage.setItem(LOGIN_ATTEMPTED_KEY, 'true');
+            window.location.assign('/auth/login?returnTo=/');
+        }
+    }, [needsLogin, alreadyTriedLogin]);
+
+    if (status === 'loading' || (needsLogin && !alreadyTriedLogin)) {
+        return <p>Signing in...</p>
     }
 
-    if (!data.authenticated) {
+    if (needsLogin) {
         return (
             <div className="shell-layout">
                 <header className="shell-header">
                     {title}
-                    <p className="user">You're not signed in. Launch the portal from <a href={legacySiteUrl}>LegacySite</a> to start a session.</p>
+                    <p className="user">Sign-in did not produce a session. <a href="/auth/login?returnTo=/">Try again</a>.</p>
                 </header>
             </div>
         )
     }
+
+    sessionStorage.removeItem(LOGIN_ATTEMPTED_KEY);
 
     return (
         <div className="shell-layout">

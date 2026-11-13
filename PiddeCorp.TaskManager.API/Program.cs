@@ -1,12 +1,8 @@
-using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using PiddeCorp.EnterpriseLogging;
+using PiddeCorp.Gateway.Auth;
 using PiddeCorp.TaskManager.API.Repositories;
 
-const string GatewayIssuer = "piddecorp-gateway";
-const string TaskManagerAudience = "taskmanager-api";
-const string GatewayPublicKeyRelativePath = "keys/PiddeCorp.Gateway.Public.pem";
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -17,32 +13,26 @@ builder.AddEnterpriseLogging(o => {
 );
 builder.AddServiceDefaults();
 
-RSA gatewayRsa = RSA.Create();
-gatewayRsa.ImportFromPem(
-    File.ReadAllText(Path.Combine(builder.Environment.ContentRootPath, GatewayPublicKeyRelativePath))
-);
-RsaSecurityKey gatewaySigningKey = new(gatewayRsa);
-
 builder.Services.AddControllers();
 builder.Services.AddScoped<TaskRepository>();
 
-builder.Services
-       .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-       .AddJwtBearer(options => {
-               options.TokenValidationParameters = new TokenValidationParameters {
-                   ValidateIssuer = true,
-                   ValidIssuer = GatewayIssuer,
-                   ValidateAudience = true,
-                   ValidAudience = TaskManagerAudience,
-                   ValidateLifetime = true,
-                   ValidateIssuerSigningKey = true,
-                   IssuerSigningKey = gatewaySigningKey,
-                   // The internal token is only valid for 30 seconds to begin with -
-                   // this just accounts for clock drift between Gateway and this module.
-                   ClockSkew = TimeSpan.FromSeconds(5),
-               };
-           }
-       );
+if(builder.Environment.IsDevelopment()) {
+    // POC: accept the Gateway's fake Okta token. See PiddeCorp.Gateway/Auth/FakeOktaBearer.cs.
+    builder.Services
+           .AddAuthentication(FakeOktaBearerExtensions.SchemeName)
+           .AddFakeOktaBearer();
+} else {
+    // Placeholder for the real thing: validate Okta-issued JWTs. Okta:Authority and
+    // Okta:Audience aren't configured anywhere yet, so outside Development every
+    // authenticated request is rejected (fail closed).
+    builder.Services
+           .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+           .AddJwtBearer(options => {
+                   options.Authority = builder.Configuration["Okta:Authority"];
+                   options.Audience = builder.Configuration["Okta:Audience"];
+               }
+           );
+}
 
 builder.Services.AddAuthorization();
 

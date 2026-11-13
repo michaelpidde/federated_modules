@@ -2,8 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { federation } from '@module-federation/vite'
 
-// Keep this distinct from the Gateway (7020/7021), the fake LegacySite
-// (7010/7011), and TaskManager.UI's current dev port (5173, the Vite
+// Keep this distinct from the Gateway (7020/7021), and TaskManager.UI's current dev port (5173, the Vite
 // default - see its vite.config.js). 5174 is reserved as TaskManager.UI's
 // future Module Federation remote port (see the placeholder entry below).
 const shellDevPort = 5175
@@ -11,12 +10,14 @@ const shellDevPort = 5175
 // Defaults to the Gateway's container port mapping (see build.bat's
 // `podman run ... -p 8082:8080 ... gateway`). Aspire's AppHost overrides this
 // via the GATEWAY_URL env var, since nothing listens on 8082 there - see
-// PiddeCorp.AppHost/AppHost.cs and PortalController.cs's matching override.
+// PiddeCorp.AppHost/AppHost.cs.
 const gatewayProxyTarget = process.env.GATEWAY_URL ?? 'http://localhost:8082'
 
 export default defineConfig({
   server: {
     port: shellDevPort,
+    // Set by Aspire's AppHost so running it lands on the shell; off for plain `npm run dev`.
+    open: process.env.OPEN_BROWSER === 'true',
     // Module Federation needs the host to know its own origin so remote
     // entries resolve correctly against it.
     origin: `http://localhost:${shellDevPort}`,

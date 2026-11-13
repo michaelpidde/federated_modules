@@ -1,10 +1,7 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
-using Microsoft.IdentityModel.Tokens;
 using PiddeCorp.EnterpriseLogging;
 using PiddeCorp.Gateway.Auth;
 using StackExchange.Redis;
@@ -14,20 +11,16 @@ using Yarp.ReverseProxy.Transforms;
 // PiddeCorp.Gateway
 //
 // This is the ONLY component in the portal architecture that should ever be
-// publicly reachable. It does two jobs for this pilot:
-//   1. Accept a one-time relay token POSTed from PiddeCorp.LegacySite,
-//      validate it, and immediately throw it away.
-//   2. Mint its own session (cookie) once that validation succeeds. Nothing
-//      downstream ever sees the original relay token - see ADR-003.
+// publicly reachable. Sessions are cookie-keyed and stored server-side
+// (Redis, or process memory when Redis:Enabled=false). The session holds the
+// identity provider's access token, which the Gateway forwards to modules.
+//
+// Okta is NOT wired up yet: IOktaClient is the seam, FakeOktaClient (Development
+// only) is the stub, and there is deliberately no login endpoint outside
+// Development until the real integration exists.
 // ---------------------------------------------------------------------------
 
-const string LegacySiteIssuer = "legacysite";
-const string GatewayAudience = "piddecorp-gateway";
-const string PublicKeyRelativePath = "keys/PiddeCorp.LegacySite.Public.pem";
-const string PrivateKeyRelativePath = "keys/PiddeCorp.Gateway.Private.pem";
 const string LocalDevCorsPolicy = "LocalDevOrigins";
-
-TimeSpan replayGuardTtl = TimeSpan.FromMinutes(5);
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -38,64 +31,27 @@ builder.AddEnterpriseLogging(o => {
 );
 builder.AddServiceDefaults();
 
-RSA rsa = RSA.Create();
-rsa.ImportFromPem(File.ReadAllText(Path.Combine(builder.Environment.ContentRootPath, PublicKeyRelativePath)));
-RsaSecurityKey legacySiteSigningKey = new(rsa);
-
-RSA gatewayRsa = RSA.Create();
-gatewayRsa.ImportFromPem(File.ReadAllText(Path.Combine(builder.Environment.ContentRootPath, PrivateKeyRelativePath)));
-RsaSecurityKey gatewaySigningKey = new(gatewayRsa);
-InternalTokenIssuer internalTokenIssuer = new(gatewaySigningKey);
-
 string shellRedirectUrl = builder.Configuration["Gateway:ShellRedirectUrl"] ?? "http://localhost:5175";
 
 builder.Services
        .AddReverseProxy()
        .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
        .AddTransforms(transformBuilderContext => {
-               // Metadata:InternalAudience is required on every route (enforced by
-               // the startup check below), so this is safe to read as non-null here.
-               string internalAudience = transformBuilderContext.Route.Metadata!["InternalAudience"];
-               
-               transformBuilderContext.AddRequestTransform(transformContext => {
-                       ClaimsPrincipal user = transformContext.HttpContext.User;
-                       string userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
-                       string name = user.FindFirstValue(ClaimTypes.Name) ?? userId;
-                       
+               transformBuilderContext.AddRequestTransform(async transformContext => {
                        // The browser's Gateway session cookie never reaches the module -
-                       // it gets swapped here for a short-lived, module-scoped token so
-                       // each module only ever sees a credential it can validate itself.
-                       string internalToken = internalTokenIssuer.IssueToken(userId, name, internalAudience);
+                       // it gets swapped here for the access token held in the session.
+                       string? accessToken = await transformContext.HttpContext.GetTokenAsync("access_token");
                        transformContext.ProxyRequest.Headers.Remove("Authorization");
-                       transformContext.ProxyRequest.Headers.Add("Authorization", $"Bearer {internalToken}");
-                       
-                       return ValueTask.CompletedTask;
+                       if(!string.IsNullOrEmpty(accessToken)) {
+                           transformContext.ProxyRequest.Headers.Add("Authorization", $"Bearer {accessToken}");
+                       }
                    }
                );
            }
        );
 
-// Fail fast rather than at first-request time: InternalTokenIssuer needs
-// InternalAudience for every route to know which module a token is minted
-// for, so a route missing it is a config bug, not a runtime one.
-List<string> routesMissingInternalAudience = builder.Configuration
-                                                    .GetSection("ReverseProxy:Routes")
-                                                    .GetChildren()
-                                                    .Where(route => string.IsNullOrWhiteSpace(
-                                                               route["Metadata:InternalAudience"]
-                                                           )
-                                                    )
-                                                    .Select(route => route.Key)
-                                                    .ToList();
-
-if(routesMissingInternalAudience.Count > 0) {
-    throw new InvalidOperationException(
-        $"ReverseProxy route(s) missing required Metadata:InternalAudience: {string.Join(", ", routesMissingInternalAudience)}"
-    );
-}
-
 // Redis:Enabled defaults to true - unset it explicitly (Aspire's local/AVD profile
-// does this) to fall back to process-memory session storage and replay guarding
+// does this) to fall back to process-memory session storage
 // instead. That's a deliberate downgrade for environments that can't run a Redis
 // container: no persistence across restarts, no sharing across instances. Never
 // disable this for anything that isn't a single-instance local dev process.
@@ -108,10 +64,12 @@ if(redisEnabled) {
 
     builder.Services.AddSingleton(redisMultiplexer);
     builder.Services.AddSingleton<ITicketStore, RedisTicketStore>();
-    builder.Services.AddSingleton<IReplayGuard, RedisReplayGuard>();
 } else {
     builder.Services.AddSingleton<ITicketStore, InMemoryTicketStore>();
-    builder.Services.AddSingleton<IReplayGuard, InMemoryReplayGuard>();
+}
+
+if(builder.Environment.IsDevelopment()) {
+    builder.Services.AddSingleton<IOktaClient, FakeOktaClient>();
 }
 
 builder.Services
@@ -120,10 +78,8 @@ builder.Services
                options.Cookie.Name = "piddecorp_portal_session";
                options.Cookie.HttpOnly = true;
                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-               // Lax is fine here: the browser only ever needs to SEND this cookie on
-               // same-origin requests from the shell/module UIs. It does NOT need to
-               // be sent cross-site, because LegacySite never sees this cookie at all -
-               // it only ever POSTs a one-time token TO us, it never reads our cookie.
+               // Lax is fine here: the browser only needs to SEND this cookie on
+               // same-origin requests from the shell/module UIs.
                options.Cookie.SameSite = SameSiteMode.Lax;
                options.ExpireTimeSpan = TimeSpan.FromHours(1);
                options.SlidingExpiration = true;
@@ -197,71 +153,19 @@ app.UseCors(LocalDevCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Shared by /auth/external-login and (in Development only) /dev/login -
-// this is the only place that actually mints a Gateway session.
-async Task EstablishGatewaySessionAsync(HttpContext ctx, string userId, string name) {
-    List<Claim> sessionClaims = [new(ClaimTypes.NameIdentifier, userId), new(ClaimTypes.Name, name)];
+// The only place that actually establishes a Gateway session. The access token
+// from the identity provider rides along in the ticket's AuthenticationProperties,
+// so it ends up in the server-side session store (Redis), never in the cookie.
+async Task EstablishGatewaySessionAsync(HttpContext ctx, OktaLoginResult login) {
+    List<Claim> sessionClaims = [new(ClaimTypes.NameIdentifier, login.UserId), new(ClaimTypes.Name, login.Name)];
     ClaimsIdentity sessionIdentity = new(sessionClaims, CookieAuthenticationDefaults.AuthenticationScheme);
     ClaimsPrincipal sessionPrincipal = new(sessionIdentity);
 
-    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, sessionPrincipal);
+    AuthenticationProperties properties = new() { ExpiresUtc = login.ExpiresUtc };
+    properties.StoreTokens([new AuthenticationToken { Name = "access_token", Value = login.AccessToken }]);
+
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, sessionPrincipal, properties);
 }
-
-app.MapPost("/auth/external-login", async (HttpContext ctx, IReplayGuard replayGuard) => {
-        IFormCollection form = await ctx.Request.ReadFormAsync();
-        string token = form["token"].ToString();
-        
-        if(string.IsNullOrWhiteSpace(token)) {
-            app.Logger.LogWarning("external-login called with no token in the request body");
-            return Results.BadRequest("Missing token.");
-        }
-        
-        JwtSecurityTokenHandler handler = new();
-        ClaimsPrincipal relayPrincipal;
-        
-        try {
-            relayPrincipal = handler.ValidateToken(token, new TokenValidationParameters {
-                    ValidateIssuer = true,
-                    ValidIssuer = LegacySiteIssuer,
-                    ValidateAudience = true,
-                    ValidAudience = GatewayAudience,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = legacySiteSigningKey,
-                    // Deliberately tight: this token should be seconds old, not minutes.
-                    ClockSkew = TimeSpan.FromSeconds(5),
-                }, out _
-            );
-        } catch(SecurityTokenException ex) {
-            app.Logger.LogWarning(ex, "Relay token failed validation");
-            return Results.Unauthorized();
-        }
-        
-        string? jti = relayPrincipal.FindFirstValue(JwtRegisteredClaimNames.Jti);
-        if(string.IsNullOrEmpty(jti)) {
-            app.Logger.LogWarning("Relay token had no jti claim - rejecting, replay protection needs it");
-            return Results.Unauthorized();
-        }
-        
-        bool wasFirstUse = await replayGuard.TryConsumeAsync(jti, replayGuardTtl);
-
-        if(!wasFirstUse) {
-            app.Logger.LogWarning("Relay token jti {Jti} was already consumed - rejecting possible replay", jti);
-            return Results.Unauthorized();
-        }
-        
-        // The relay token's job ends here. We never store it, forward it, or hand
-        // it back to the browser - only the claims we care about survive past this point.
-        string userId = relayPrincipal.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? "unknown";
-        string name = relayPrincipal.FindFirstValue("name") ?? userId;
-
-        await EstablishGatewaySessionAsync(ctx, userId, name);
-
-        app.Logger.LogInformation("Gateway session established for {UserId} via LegacySite relay", userId);
-        
-        return Results.Redirect(shellRedirectUrl);
-    }
-);
 
 app.MapGet("/auth/me", (HttpContext ctx) => {
         if(ctx.User.Identity?.IsAuthenticated != true) {
@@ -285,27 +189,21 @@ app.MapPost("/auth/logout", async (HttpContext ctx) => {
 
 if(app.Environment.IsDevelopment()) {
     app.Logger.LogWarning(
-        "Development-only endpoint registered: GET /dev/login - establishes a Gateway " +
-        "session without validating anything. Do not enable this outside Development."
+        "Development-only endpoint registered: GET /auth/login - signs in via the FAKE Okta " +
+        "stub without validating anything. Do not enable this outside Development."
     );
 
-    // SECURITY: this endpoint is a real authentication bypass, not a simulated one.
-    // It skips JWT/relay-token validation entirely and signs the caller in as
-    // whatever `user` they pass on the query string. The only thing standing
-    // between this and a production auth bypass is the IsDevelopment() check
-    // above - the same guarantee that already protects things like detailed
-    // error pages and the local HTTPS dev cert: that ASPNETCORE_ENVIRONMENT is
-    // never set to Development anywhere reachable outside a dev machine. Do not
-    // relax this gate to something broader "for convenience" later.
-    app.MapGet("/dev/login", async (HttpContext ctx, string? user, string? returnTo) => {
-            string userId = user ?? "dev-user";
+    // SECURITY: a real authentication bypass. Signs the caller in as whatever `user`
+    // they pass on the query string. The only gate is IsDevelopment(). Replace with
+    // the real Okta flow before this runs anywhere else; do not widen the gate.
+    app.MapGet("/auth/login", async (HttpContext ctx, IOktaClient okta, string? user, string? returnTo) => {
+            OktaLoginResult login = await okta.LoginAsync(user ?? "dev-user");
 
-            app.Logger.LogWarning("/dev/login hit - establishing Gateway session for {UserId} with no auth check", userId);
+            app.Logger.LogWarning("/auth/login hit - fake Okta session for {UserId}", login.UserId);
 
-            await EstablishGatewaySessionAsync(ctx, userId, userId);
+            await EstablishGatewaySessionAsync(ctx, login);
 
-            // Relative-only, never an arbitrary URL - this endpoint is dev-only, but an
-            // open redirect target is still a bad habit not worth forming even here.
+            // Relative-only, never an arbitrary URL.
             bool returnToIsSafeRelativePath = returnTo is not null
                                                && returnTo.StartsWith('/')
                                                && !returnTo.StartsWith("//")

@@ -6,8 +6,7 @@
 // an Azure AVD host pool where Docker/Podman isn't available. This is
 // deliberately NOT the same topology as the k8s deployment:
 //   - No Redis resource: Gateway falls back to a process-memory session
-//     store and replay guard (Redis:Enabled=false - see Auth/InMemoryTicketStore.cs
-//     and Auth/InMemoryReplayGuard.cs). Sessions won't survive a restart and
+//     store (Redis:Enabled=false - see Auth/InMemoryTicketStore.cs). Sessions won't survive a restart and
 //     aren't shared across instances, which is fine for one local dev process.
 //   - Every port below is pinned to match the values already hardcoded
 //     throughout this repo (CORS allow-lists, YARP proxy destinations in
@@ -24,19 +23,6 @@ IResourceBuilder<ProjectResource> gateway = builder
     // No Redis resource in this graph - see the file banner above.
     .WithEnvironment("Redis__Enabled", "false");
 
-IResourceBuilder<ProjectResource> legacySite = builder
-    .AddProject<Projects.PiddeCorp_LegacySite>("legacysite", launchProfileName: "https")
-    // LegacySite's login-tile POST is a top-level browser form submission straight to
-    // Gateway (see PortalController.cs), not a server-to-server call - it has to target
-    // wherever Gateway is actually listening. The container/k8s default (port 8082) has
-    // nothing running on it here, so point it at Gateway's "PiddeCorp.Gateway" launch
-    // profile instead. Must be the https endpoint, not http: Gateway's session cookie is
-    // CookieSecurePolicy.Always, so a browser silently discards it (login "succeeds" but
-    // no session sticks) if this response comes back over plain HTTP - confirmed by
-    // testing both against a running instance.
-    .WithEnvironment("Gateway__ExternalLoginUrl", "https://localhost:7020/auth/external-login")
-    .WaitFor(gateway);
-
 // Pinned to the "http" profile specifically - Gateway's appsettings.Development.json
 // proxies to these two APIs' http ports (5000, 5012), not their https ports.
 IResourceBuilder<ProjectResource> taskManagerApi = builder
@@ -51,16 +37,14 @@ IResourceBuilder<ProjectResource> module2Api = builder
 builder.AddNpmApp("portal-shell", "../PiddeCorp.Portal.Shell", "dev")
        .WithHttpEndpoint(port: 5175, isProxied: false)
        .WithExternalHttpEndpoints()
+       // The shell is the entry point: vite.config.ts opens it in the browser when this
+       // is set. (The Aspire dashboard and Gateway no longer auto-launch a browser.)
+       .WithEnvironment("OPEN_BROWSER", "true")
        // vite.config.ts's /auth proxy defaults to Gateway's container port (8082),
        // which nothing listens on here - this is a Node-to-Node hop (not
        // browser-facing), so the plain http endpoint avoids needing to deal with
        // the dev cert's trust at all.
        .WithEnvironment("GATEWAY_URL", "http://localhost:7021")
-       // app.tsx's "Launch the portal from LegacySite" link defaults to LegacySite's
-       // container port (8083), which nothing listens on here - this one IS
-       // browser-facing (a plain <a href>), so point it at LegacySite's actual
-       // endpoint via a live reference rather than a second hardcoded port.
-       .WithEnvironment("VITE_LEGACY_SITE_URL", legacySite.GetEndpoint("https"))
        .WaitFor(gateway);
 
 // TaskManager.UI and Module2.UI are Module Federation REMOTES, not the host.

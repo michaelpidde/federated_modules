@@ -7,16 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.19.1" />
     <PackageReference Include="PiddeCorp.EnterpriseLogging" Version="1.1.0" />
     <PackageReference Include="StackExchange.Redis" Version="3.0.11" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
     <PackageReference Include="Yarp.ReverseProxy" Version="2.2.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="keys\PiddeCorp.LegacySite.Public.pem" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
-    <None Include="keys\PiddeCorp.Gateway.Private.pem" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
   </ItemGroup>
 
   <ItemGroup>
